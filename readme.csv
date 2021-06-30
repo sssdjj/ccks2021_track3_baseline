@@ -1,3 +1,22 @@
 基于 bert4keras 的一个baseline
 
 不作任何 trick 单模 线上 可到 0.7820
+
+预训练模型使用 nezha
+
+使用说明：
+	数据放在 data下
+	下载预训练模型解压
+	模型会保存在 train中
+
+	python3 train.py
+
+优化方向：
+ 1，使用 半监督 mlm 利用上test数据
+ 2，使用 对抗训练 提升效果
+
+bert4keras >= 0.10.0
+
+nezha的预训练模型
+链接: https://pan.baidu.com/s/1lURyXs39PYnsb4imCjVkfQ  密码: 1eqq
+--来自百度网盘超级会员V4的分享
