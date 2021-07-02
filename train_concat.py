@@ -1,6 +1,9 @@
 #! -*- coding:utf-8 -*-
-# score:0.7820--0.7769
-
+# score: 0.7786
+"""bert每层捕获的信息不同，代表的语义粒度也不同，将不同粒度的信息拼接起来，然后送进CNN后做分类。
+ret:
+  https://arxiv.org/pdf/2008.06460.pdf
+  """
 import numpy as np
 from bert4keras.backend import keras, set_gelu, K
 from bert4keras.tokenizers import Tokenizer
@@ -8,16 +11,19 @@ from bert4keras.models import build_transformer_model
 from bert4keras.optimizers import Adam
 from bert4keras.snippets import sequence_padding, DataGenerator
 from bert4keras.snippets import open
-from keras.layers import Dropout, Dense
+from bert4keras.layers import Concatenate
+from keras.layers import Dropout, Dense, Lambda
 import json
 from tqdm import tqdm
 from sklearn.metrics import f1_score
+from dgcnn import AttentionPooling1D, DGCNN
 
 set_gelu('tanh')  # 切换gelu版本
 
 maxlen = 130
 batch_size = 64
 
+# path = "/Users/sssdjj/bert_source/"
 path = "data/"
 config_path = path + 'nezha_base/bert_config.json'
 checkpoint_path = path + 'nezha_base/model.ckpt-900000'
@@ -94,7 +100,25 @@ bert = build_transformer_model(
     return_keras_model=False,
 )
 
-output = Dropout(rate=0.1)(bert.model.output)
+inputs = bert.inputs
+
+outputs = []
+x = bert.apply_embeddings(inputs)
+
+for idx in range(bert.num_hidden_layers):
+    x = bert.apply_main_layers(x, idx)
+    output = Lambda(lambda x: x[:, 0:1])(x)
+    outputs.append(output)
+
+output = Concatenate(1)(outputs)
+
+output = DGCNN(dilation_rate=1, dropout_rate=0.1)(output)
+output = DGCNN(dilation_rate=2, dropout_rate=0.1)(output)
+output = DGCNN(dilation_rate=2, dropout_rate=0.1)(output)
+output = DGCNN(dilation_rate=1, dropout_rate=0.1)(output)
+
+output = AttentionPooling1D()(output)
+output = Dropout(0.5)(output)
 output = Dense(
     units=len(labels), activation='softmax', kernel_initializer=bert.initializer
 )(output)
@@ -112,7 +136,6 @@ model.compile(
 # 转换数据集
 train_generator = data_generator(train_data, batch_size)
 valid_generator = data_generator(valid_data, batch_size)
-
 
 
 def evaluate(data):
@@ -149,7 +172,7 @@ def submit(data):
             )
             y_pred = model.predict([[token_ids], [segment_ids]]).argmax(axis=1)
             i["candidate"][m]["label"] = id2labels[y_pred[0]]
-        path.write(json.dumps(i,ensure_ascii=False) + "\n")
+        path.write(json.dumps(i, ensure_ascii=False) + "\n")
     path.close()
 
 
@@ -175,14 +198,14 @@ if __name__ == '__main__':
 
     evaluator = Evaluator()
 
-    model.fit(
-        train_generator.forfit(),
-        steps_per_epoch=len(train_generator),
-        epochs=5,
-        callbacks=[evaluator]
-    )
+    # model.fit(
+    #     train_generator.forfit(),
+    #     steps_per_epoch=len(train_generator),
+    #     epochs=10,
+    #     callbacks=[evaluator]
+    # )
 
-    model.load_weights('train/best_model.weights')
+    model.load_weights('data/best_model.weights')
     submit(test_data)
 
 else:
